@@ -60,12 +60,13 @@ class Gaussian2D(toy):
         
     def wass2d(self, samples):
         mu0 = jnp.mean(samples, axis=0)
-        mu1 = self._mean
+        mu1 = self.mu
         cov0 = jnp.cov(samples.T)
-        cov1 = self._cov
+        cov1 = self.sigma
         
         w2d = 0.5 * (jnp.linalg.norm(mu0 - mu1)**2 + \
-            jnp.trace(cov0 + cov1 - 2 * jnp.sqrt(cov0 @ cov1)))
+                jnp.trace(cov0 + cov1 - 2 * jax.scipy.linalg.sqrtm(cov0 @ cov1).\
+                    astype(jnp.float32)))
         
         return w2d
 
@@ -170,7 +171,8 @@ class TwistedGaussian2D(toy):
         cov1 = self._cov
         
         w2d = 0.5 * (jnp.linalg.norm(mu0 - mu1)**2 + \
-            jnp.trace(cov0 + cov1 - 2 * jnp.sqrt(cov0 @ cov1)))
+            jnp.trace(cov0 + cov1 - 2 * jax.scipy.linalg.sqrtm(cov0 @ cov1).\
+                astype(jnp.float32)))
         
         return w2d
     
