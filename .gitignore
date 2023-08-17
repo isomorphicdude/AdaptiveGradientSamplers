@@ -1,2 +1,4 @@
 *.pyc
 /notebooks
+/samplers/__pycache__
+*.cpython-39.pyc
