@@ -68,8 +68,8 @@ def generate_2D(distribution,
                                        distribution, 
                                        num_samples)
                 
-            ret[name][f"{name}_{hyperparams.get(name).values()}_{i}"] = samples
-            name_list[name].append(f"{name}_{hyperparams.get(name).values()}_{i}")
+            ret[name][f"{name}_{hyperparams.get(name).values()}_{init_state}_{i}"] = samples
+            name_list[name].append(f"{name}_{hyperparams.get(name).values()}_{init_state}_{i}")
             
     # storing to h5py file
     if store:
