@@ -92,10 +92,29 @@ def create_hyperparams_list(list_of_hyperparams,
     return hyperparams_list
 
 
-def plot_2D_samples(samples,
-                    distribution, 
-                    xlim, 
-                    ylim):
-    plt.figure(figsize=(8, 6))
-    plt.hist2d(samples[:, 0], samples[:, 1], bins=100, cmap='RdBu')
-    plt.
+def plot_2D_samples_single(ax,
+                           distribution,
+                           samples,
+                           first_n=-1,
+                           **kwargs
+                           ):
+    """
+    Plots 2D samples from a distribution and combine with density plot (if available).
+    
+    Args:  
+        - ax: a matplotlib axis object
+        - distribution: a toy class object in toy_model.py
+        - samples: samples from a single method
+        - first_n: plot the first n samples
+        - **kwargs: keyword arguments for plotting samples  
+        
+    Returns:
+        - ax: a matplotlib axis object
+    """  
+    distribution.plot(ax=ax, **kwargs)
+    ax.scatter(samples[:first_n, 0], samples[:first_n, 1], s=3,
+                    alpha=0.1, color='yellow')
+    
+    
+    
+    

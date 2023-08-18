@@ -27,6 +27,27 @@ class toy(abc.ABC):
     @abc.abstractmethod
     def kl_divergence(self, samples):
         pass
+    
+    @abc.abstractmethod
+    def plot(self, ax, xlim, ylim, step, **kwargs):
+        """
+        Plot the density.(no samples)
+        
+        Args:  
+            - ax: matplotlib axis
+            - xlim: x-axis limits
+            - ylim: y-axis limits
+            - step: step size for the grid
+            - kwargs: additional arguments for the density plot
+        """
+        xy = np.mgrid[-xlim:xlim:step, -ylim:ylim:step]
+        vec_x = xy[np.newaxis, ...].reshape(2, -1).T
+        out = ax.contourf(xy[0], 
+                          xy[1], 
+                          self.pdf(vec_x).reshape(int(2*xlim/step),
+                                                    int(2*ylim/step)),
+                          **kwargs)
+        return out
 
 
 class Gaussian2D(toy):
@@ -69,6 +90,9 @@ class Gaussian2D(toy):
                     astype(jnp.float32)))
         
         return w2d
+    
+    def plot(self, ax, xlim, ylim, step=0.5):
+        super().plot(ax, xlim, ylim, step)
 
 
 class Banana(toy):
@@ -91,6 +115,9 @@ class Banana(toy):
         
     def kl_divergence(self, samples):
         raise NotImplementedError(f"For simple Banana the divergence is not implemented.")
+    
+    def plot(self, ax, xlim, ylim, step):
+        super().plot(ax, xlim, ylim, step)
     
 
 class TwistedGaussian2D(toy):
@@ -176,6 +203,8 @@ class TwistedGaussian2D(toy):
         
         return w2d
     
+    def plot(self, ax, xlim, ylim, step):
+        super().plot(ax, xlim, ylim, step)
     
     
     
