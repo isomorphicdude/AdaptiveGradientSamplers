@@ -40,6 +40,7 @@ def jax_ula_sampler(x0,
                     step_size,
                     grad_log_pdf,
                     burnin=None,
+                    eps=None,
                     key=jax.random.PRNGKey(0),
                     **kwargs):
     """
@@ -59,7 +60,7 @@ def jax_ula_sampler(x0,
     if burnin is not None:
         return samples[burnin:]
 
-    return samples
+    return samples, None
 
 
 
@@ -151,10 +152,11 @@ def jax_rmsprop_ula_sampler(x0,
     if burnin is not None:
         return samples[burnin:]
 
-    if return_Vs:
-        return samples, Vs
-    else:
-        return samples
+    # if return_Vs:
+    #     return samples, Vs
+    # else:
+    #     return samples
+    return samples, Vs
 
 ############################## rmsprop ULA ##############################
 @partial(jax.jit, static_argnames=("step_size", 
@@ -247,10 +249,19 @@ def jax_rmsfull_ula_sampler(x0,
     if burnin is not None:
         return samples[burnin:]
     
-    if return_Vs:
-        return samples, Vs
-    else:
-        return samples
+    # def return_samples(samples, Vs):
+    #     return samples, None
+    # def return_V(samples, Vs):
+    #     return samples, Vs
+    
+    # return jax.lax.cond(return_Vs, 
+    #              return_V, 
+    #              return_samples, 
+    #              samples, Vs)
+    # if return_Vs:
+    return samples, Vs
+    # else:
+    #     return samples
 
 
 ##### preconditioned ula with fixed preconditioner #####
@@ -311,7 +322,7 @@ def jax_pula_sampler(x0,
     if burnin is not None:
         return samples[burnin:]
 
-    return samples
+    return samples, None
 
 
 ############################## adamax without momentum ##############################
@@ -399,10 +410,12 @@ def jax_rmax_ula_sampler(x0,
     if burnin is not None:
         return samples[burnin:]
 
-    if return_Vs:
-        return samples, Vs
-    else:
-        return samples
+    # if return_Vs:
+    #     return samples, Vs
+    # else:
+    #     return samples
+    
+    return samples, Vs
 
 
 ############################## adahessian without momentum ##############################
@@ -501,11 +514,11 @@ def jax_adah_ula_sampler(x0,
     if burnin is not None:
         return samples[burnin:]
 
-    if return_Vs:
-        return samples, Vs
-    else:
-        return samples
-    
+    # if return_Vs:
+    #     return samples, Vs
+    # else:
+    #     return samples
+    return samples, Vs
 
 ############################################################
 samplers_dict = {
@@ -519,6 +532,14 @@ samplers_dict = {
 
 
 def get_samplers(name, fix=False, hyperparam={}):
+    """
+    Return a partial function of the sampler with fixed hyperparameters.  
+    
+    Args:  
+        - name: name of the sampler.
+        - fix: whether to fix the hyperparameters.
+        - hyperparam: hyperparameters to fix, dictionary.
+    """
     if not fix:
         return samplers_dict[name]
     else:
