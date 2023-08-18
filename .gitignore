@@ -3,3 +3,4 @@
 /samplers/__pycache__
 *.cpython-39.pyc
 samplers/__pycache__/__init__.cpython-39.pyc
+*.h5py
