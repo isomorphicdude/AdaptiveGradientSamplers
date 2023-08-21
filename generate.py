@@ -22,7 +22,8 @@ def run_single_chain(sampler,
     samples = sampler(init_state, 
                       n_samples=num_samples,
                       grad_log_pdf = distribution.grad_logpdf,
-                      key=key)[0]
+                      key=key,
+                      eps=1e-5)[0]
     
     return samples
 
@@ -34,10 +35,12 @@ def generate_2D(distribution,
                 hyperparams={},
                 seed=0,
                 store=False,
-                output="data.h5py"
+                output="data.h5py",
+                use_string_keys=True,
+                init_var = 1.0,
                 ):
     """
-    Run experiments to sample from a 2D Gaussian.  
+    Run experiments to sample from a 2D distribution.  
     
     Args:  
         - distribution: a toy class object in toy_model.py
@@ -48,6 +51,7 @@ def generate_2D(distribution,
         - seed: random seed for jax.random  
         - store: whether to store the samples in a file in h5py format
         - output: name of the output file, if store=True
+        - use_string_keys: whether to use strings of hyperparams as keys
         
     Returns:   
         - samples: a dictionary of samples for each method and hyperparams
@@ -55,31 +59,45 @@ def generate_2D(distribution,
     """  
     #TODO: add support for multiprocessing
     key = jax.random.PRNGKey(seed)
-    init_states = jax.random.normal(key, shape=(num_chains, 2))
+    init_states = jax.random.normal(key, shape=(num_chains, 2)) * jnp.sqrt(init_var)
     
     # when not storing, only return the dictionary
-    ret = {name: {} for name in methods}
-    name_list = {name: [] for name in methods}
+    ret = {}
+    name_list = []
+    
+    # add P to the hyperparams if pula and Gaussian2D
+    # otherwise raise error
+    if 'pula' in methods and distribution.__class__.__name__=='Gaussian2D':
+        print(hyperparams['pula'])
+        hyperparams['pula']['P'] = distribution.sigma
+    elif 'pula' in methods and distribution.__class__.__name__!='Gaussian2D':
+        raise ValueError("PULA only works for Gaussian2D")
     
     for name in methods:
-        sampler = get_samplers(name, fix=True, hyperparam=hyperparams.get(name))
+        sampler = get_samplers(name, 
+                               fix=True, 
+                               hyperparam=hyperparams.get(name))
         for i, init_state in enumerate(init_states):
             samples = run_single_chain(sampler, 
                                        key, 
                                        init_state, 
                                        distribution, 
                                        num_samples)
-                
-            ret[name][f"{name}_{hyperparams.get(name).values()}_{init_state}_{i}"] = samples
-            name_list[name].append(f"{name}_{hyperparams.get(name).values()}_{init_state}_{i}")
+            
+            if use_string_keys:
+                # ret[name][f"{name}_{hyperparams.get(name).values()}_{init_state}_{i}"] = samples
+                ret[f"{name}_{hyperparams.get(name).values()}_{init_state}_{i}"] = samples                
+                name_list.append(f"{name}_{hyperparams.get(name).values()}_{init_state}_{i}")
+            # else:
+            #     ret[name][hyperparams.get(name).values()] = samples
+            #     name_list[name].append(hyperparams.get(name).values())
             
     # storing to h5py file
     if store:
         with h5py.File(output, 'w') as f:
-            for name in methods:
-                for key in name_list[name]:
-                    f.create_dataset(key, 
-                                     data=ret[name][key])
+            for key in name_list:
+                f.create_dataset(key, 
+                                data=ret[key])
             
     return ret, name_list
 
@@ -93,7 +111,8 @@ def _ula_generate_2D_single(distribution,
                             seed=0,
                             store=False,
                             output="ula.h5py",
-                            use_num_cores = 1
+                            use_num_cores = 1,
+                            use_string_keys=True,
                             ):
     """
     Returns results from multiple runs from ula on 2D distribution.  
@@ -108,6 +127,7 @@ def _ula_generate_2D_single(distribution,
         - store: whether to store the samples in a file in h5py format
         - output: name of the output file, if store=True  
         - use_num_cores: number of cores to use for multiprocessing
+        - use_string_keys: whether to use strings of hyperparams as keys
         
     Returns:  
         - samples: a dictionary of samples indexed by hyperparameters
@@ -151,7 +171,10 @@ def _ula_generate_2D_single(distribution,
         
     # store and return (note map is order preserving)
     for i, hyp in enumerate(hyperparams):
-        ret[f"{hyp}"] = out[i][0]
+        if use_string_keys:
+            ret[f"{hyp}"] = out[i][0]
+        else:
+            ret[hyp] = out[i][0]
     
     # storing to h5py file
     if store:
@@ -173,7 +196,8 @@ def _pula_generate_2D_single(distribution,
                              store=False,
                              output="pula.h5py",
                              use_num_cores = 1,
-                             P = None
+                             P = None,
+                             use_string_keys=True,
                              ):
     
     num_runs = len(hyperparams)
@@ -191,7 +215,7 @@ def _pula_generate_2D_single(distribution,
                             grad_log_pdf = distribution.grad_logpdf,
                             eps=1e-5,
                             key=key,
-                            P = P,
+                            P = distribution.sigma,
                             **hyp)
         
     import multiprocess
@@ -210,7 +234,10 @@ def _pula_generate_2D_single(distribution,
         
     # store and return (note map is order preserving)
     for i, hyp in enumerate(hyperparams):
-        ret[f"{hyp}"] = out[i][0]
+        if use_string_keys:
+            ret[f"{hyp}"] = out[i][0]
+        else:
+            ret[hyp] = out[i][0]
     
     # storing to h5py file
     if store:
@@ -231,7 +258,8 @@ def _rmsprop_generate_2D_single(distribution,
                                 seed=0,
                                 store=False,
                                 output="rmsprop.h5py",
-                                use_num_cores = 1
+                                use_num_cores = 1,
+                                use_string_keys=True,
                                 ):
 
     num_runs = len(hyperparams)
@@ -267,7 +295,10 @@ def _rmsprop_generate_2D_single(distribution,
         
     # store and return (note map is order preserving)
     for i, hyp in enumerate(hyperparams):
-        ret[f"{hyp}"] = out[i][0]
+        if use_string_keys:
+            ret[f"{hyp}"] = out[i][0]
+        else:
+            ret[hyp] = out[i][0]
     
     # storing to h5py file
     if store:
@@ -288,7 +319,8 @@ def _rmsfull_generate_2D_single(distribution,
                                 seed=0,
                                 store=False,
                                 output="rmsfull.h5py",
-                                use_num_cores = 1
+                                use_num_cores = 1,
+                                use_string_keys=True,
                                 ):
     num_runs = len(hyperparams)
     key = jax.random.PRNGKey(seed)
@@ -323,7 +355,10 @@ def _rmsfull_generate_2D_single(distribution,
         
     # store and return (note map is order preserving)
     for i, hyp in enumerate(hyperparams):
-        ret[f"{hyp}"] = out[i][0]
+        if use_string_keys:
+            ret[f"{hyp}"] = out[i][0]
+        else:
+            ret[hyp] = out[i][0]
     
     # storing to h5py file
     if store:
