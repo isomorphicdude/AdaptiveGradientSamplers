@@ -204,7 +204,12 @@ class TwistedGaussian2D(toy):
         return w2d
     
     def plot(self, ax, xlim, ylim, step):
-        super().plot(ax, xlim, ylim, step)
+        xx = np.arange(-xlim, xlim, step)
+        yy = np.arange(-ylim, ylim, step)
+        Xbb, Ybb = np.meshgrid(xx, yy)
+        Zbb = self.pdf(Xbb, Ybb)
+        ax.contourf(Xbb, Ybb, Zbb)
+
     
     
     
