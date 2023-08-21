@@ -26,18 +26,23 @@ def get_samples_dict(filename):
 
 
 
-def kl_div_every_n(distribution, samples, n):
+def kl_div_every_n(distribution,
+                   samples,
+                   n,
+                   use_stored=False):
     """
-    Compute the KL divergence every n samples.  
+    Computes the KL divergence every n samples.  
     
     Args:  
         - distribution: a toy class object in toy_model.py
         - samples: a dictionary of samples, keys are methods and hyperparameters
         - n: compute the KL divergence every n samples
+        - use_stored: whether to use the stored KL divergences
         
     Returns:  
         - kl_div: a dictionary of KL divergences for each method and hyperparameter
-    """
+    """  
+    
     kl_div = {f'{name.split("_")[0]}_{name.split("_")[-1]}': \
         [] for name in samples.keys()}
     
@@ -45,14 +50,13 @@ def kl_div_every_n(distribution, samples, n):
         for i in range(n, len(samples[name]), n):
             kl_div[f'{name.split("_")[0]}_{name.split("_")[-1]}'].\
                 append(distribution.kl_divergence(samples[name][:i]))
-            
     return kl_div
 
 
 
 def w2d_every_n(distribution, samples, n):
     """
-    Compute the 2-Wasserstein distance every n samples.
+    Computes the 2-Wasserstein distance every n samples.
     
     Args:   
         - distribution: a toy class object in toy_model.py
