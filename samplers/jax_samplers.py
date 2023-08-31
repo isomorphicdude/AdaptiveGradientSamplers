@@ -45,6 +45,18 @@ def jax_ula_sampler(x0,
                     **kwargs):
     """
     Return samples from unadjusted Langevin algorithm.  
+    
+    Args:  
+        - x0: initial state.
+        - n_samples: number of samples to generate.
+        - step_size: step size.
+        - grad_log_pdf: gradient of log pdf.
+        - burnin: number of burnin samples.
+        - key: random key.  
+        
+    Returns:  
+        - samples: generated samples.
+        - None: dummy return.
     """
     x = x0
 
@@ -95,6 +107,8 @@ def rmsprop_ula_kernel(x,
     # normalizing term
     c = jnp.sqrt(f) + eps
     
+    # step_size = step_size * jnp.linalg.norm(c)
+    
     # update state
     x = x + step_size * (g / c) + jnp.sqrt(
         2 * step_size / c) * jax.random.normal(subkey, x.shape)
@@ -122,7 +136,22 @@ def jax_rmsprop_ula_sampler(x0,
                             return_Vs=False,
                             **kwargs):
     """
-    Return samples from unadjusted Langevin algorithm.  
+    Return samples from rmsprop ula.   
+    
+    Args:  
+        - x0: initial state.
+        - n_samples: number of samples to generate.
+        - step_size: step size.
+        - beta: beta for moving average of squared gradient.
+        - eps: control extreme values of the Vs
+        - grad_log_pdf: gradient of log pdf.
+        - burnin: number of burnin samples.
+        - key: random key.
+        - return_Vs: whether to return the Vs  
+        
+    Returns:  
+        - samples: generated samples.
+        - Vs: Vs list.
     """
     x = x0
 
@@ -220,7 +249,22 @@ def jax_rmsfull_ula_sampler(x0,
                             return_Vs=False,
                             **kwargs):
     """
-    Return samples from unadjusted Langevin algorithm.  
+    Return samples from rmsfull ula.  
+    
+    Args:  
+        - x0: initial state.
+        - n_samples: number of samples to generate.
+        - step_size: step size.
+        - beta: beta for moving average of outer product.
+        - eps: control extreme values of the Vs  
+        - grad_log_pdf: gradient of log pdf.
+        - burnin: number of burnin samples.
+        - key: random key.
+        - return_Vs: whether to return the Vs  
+        
+    Returns:  
+        - samples: generated samples.
+        - Vs: Vs list.
     """
     x = x0
 
@@ -239,7 +283,7 @@ def jax_rmsfull_ula_sampler(x0,
         # also return f
         return (x, f, counter, key), (x, f)
 
-    carry = (x, 1.0 * jnp.zeros((x.shape[0], x.shape[0])), 1, key)
+    carry = (x, jnp.zeros((x.shape[0], x.shape[0])), 1, key)
     
     _, out = jax.lax.scan(rmsfull_ula_step, carry, None
                               , length=n_samples)
@@ -295,7 +339,8 @@ def pula_kernel(x,
          static_argnames=("n_samples", 
                           "step_size", 
                           "grad_log_pdf", 
-                          "burnin"))
+                          "burnin",
+                          "isotropic"))
 def jax_pula_sampler(x0,
                      n_samples,
                      step_size,
@@ -304,9 +349,23 @@ def jax_pula_sampler(x0,
                      P,
                      burnin=None,
                      key=jax.random.PRNGKey(0),
+                     isotropic=False,
                      **kwargs):
     """
-    Return samples from unadjusted Langevin algorithm.  
+    Return samples from preconditioned unadjusted Langevin algorithm.  
+    
+    Args:  
+        - x0: initial state.
+        - n_samples: number of samples to generate.
+        - step_size: step size.
+        - grad_log_pdf: gradient of log pdf.
+        - burnin: number of burnin samples.
+        - key: random key.
+        - isotropic: whether to use isotropic preconditioner.
+        
+    Returns:  
+        - samples: generated samples.
+        - None: dummy return.
     """
     x = x0
 
@@ -381,7 +440,23 @@ def jax_rmax_ula_sampler(x0,
                         return_Vs=False,
                         **kwargs):
     """
-    Return samples from unadjusted Langevin algorithm.  
+    Return samples from rmsprop ula with l-infinity norm.
+    Follows from the ADAMAX from Kingma and Ba (2014).
+    
+    Args:  
+        - x0: initial state.
+        - n_samples: number of samples to generate.
+        - step_size: step size.
+        - beta: beta for moving average of max gradient.
+        - eps: control extreme values of the Vs
+        - grad_log_pdf: gradient of log pdf.
+        - burnin: number of burnin samples.
+        - key: random key.
+        - return_Vs: whether to return the Vs  
+        
+    Returns:  
+        - samples: generated samples.
+        - Vs: Vs list.
     """
     x = x0
 
@@ -389,15 +464,15 @@ def jax_rmax_ula_sampler(x0,
     def rmax_ula_step(carry, _):
         x, f, counter, key = carry
         x, f, counter, key = rmax_ula_kernel(x, 
-                                                f, 
-                                                counter, 
-                                                key, 
-                                                step_size, 
-                                                beta,
-                                                eps,
-                                                grad_log_pdf, 
-                                                **kwargs)
-        # also return f
+                                            f, 
+                                            counter, 
+                                            key, 
+                                            step_size, 
+                                            beta,
+                                            eps,
+                                            grad_log_pdf, 
+                                            **kwargs)
+    # also return f
         return (x, f, counter, key), (x, f)
 
     carry = (x, 1.0 * jnp.ones(x.shape), 1, key)
@@ -446,7 +521,7 @@ def adah_ula_kernel(x,
     bern = jax.random.bernoulli(subkey2, 0.5, shape=x.shape)
     
     # Radmacher random variable
-    rad = bern * 2 - 1
+    rad = bern.astype(jnp.float32) * 2. - 1.
     
     # Hessian oracle
     Hz = jax.grad(lambda x: jnp.vdot(g, x))(rad)
@@ -485,14 +560,29 @@ def jax_adah_ula_sampler(x0,
                         return_Vs=False,
                         **kwargs):
     """
-    Return samples from unadjusted Langevin algorithm.  
+    Return samples from adahessian ula.
+    
+    Args:  
+        - x0: initial state.
+        - n_samples: number of samples to generate.
+        - step_size: step size.
+        - beta: beta for moving average of diagonal Hessian.
+        - eps: control extreme values of the diagonal Hessian.
+        - grad_log_pdf: gradient of log pdf.
+        - burnin: number of burnin samples.
+        - key: random key.
+        - return_Vs: whether to return the diagonal Hessian.
+        
+    Returns:  
+        - samples: generated samples.
+        - Vs: diagonal Hessian list.
     """
     x = x0
 
     # use for scan
     def adah_ula_step(carry, _):
         x, f, counter, key = carry
-        x, f, counter, key = rmax_ula_kernel(x, 
+        x, f, counter, key = adah_ula_kernel(x, 
                                             f, 
                                             counter, 
                                             key, 
@@ -520,6 +610,143 @@ def jax_adah_ula_sampler(x0,
     #     return samples
     return samples, Vs
 
+
+############################## Monge (2023 Yu et al.) ##############################
+@partial(jax.jit, static_argnames=("dim",
+                                   "alpha_2"))
+def _get_monge_metrics(dim, grad, alpha_2):
+    grad_norm_2 = jnp.linalg.norm(grad)**2
+    
+    # forming the inverse G^-1
+    G_r = jnp.eye(dim) - alpha_2 / (1 + alpha_2 * grad_norm_2) *\
+        (grad[:,jnp.newaxis] @ grad[:,jnp.newaxis].T)
+    
+    # forming the inverse sqrt G^-1/2
+    G_rsqrt = jnp.eye(dim) +\
+        (1 / grad_norm_2) * (1 / jnp.sqrt(1 + alpha_2 * grad_norm_2) - 1) *\
+            (grad[:,jnp.newaxis] @ grad[:,jnp.newaxis].T)
+            
+    return G_r, G_rsqrt
+
+
+@partial(jax.jit, static_argnames=("step_size", 
+                                   "grad_log_pdf", 
+                                   "alpha_2",
+                                   "lambd",
+                                   "eps",))
+def monge_ula_kernel(x, 
+                     p_grad, 
+                     counter, 
+                     key, 
+                     step_size, 
+                     alpha_2, 
+                     lambd,
+                     eps,
+                     grad_log_pdf, 
+                     **kwargs):
+    """
+    Return the next state of the Monge ULA kernel.
+    """
+    dim = x.shape[0]
+    threshold = 1e3
+    
+    # split key
+    key, subkey = jax.random.split(key, num=2)
+
+    # gradient of log pdf
+    g = grad_log_pdf(x, **kwargs)
+
+    # moving average of the gradient
+    # p_grad = lambd * g + (1 - lambd) * p_grad # usually noisy gradient
+    p_grad = g
+    
+    # get preconditioners
+    G_r, G_rsqrt = _get_monge_metrics(dim, p_grad, alpha_2)
+    
+    # precond grad
+    precond_grad = G_r @ g
+    # precond_grad_norm = jnp.linalg.norm(precond_grad)
+    
+    # # Avoid numerical issues
+    # if precond_grad_norm > threshold:
+    #     factor = jnp.linalg.norm(g) / threshold
+    #     update_step = g / factor * step_size +\
+    #         jax.random.normal(subkey, x.shape) / jnp.sqrt(factor) * jnp.sqrt(2 * step_size)
+    # else:
+    update_step = precond_grad * step_size +\
+        G_rsqrt @ jax.random.normal(subkey, x.shape) * jnp.sqrt(2 * step_size)
+            
+    # update state
+    x = x + update_step
+    counter += 1
+    
+    return (x, p_grad, counter, key)
+
+
+@partial(jax.jit,
+         static_argnames=("n_samples", 
+                          "step_size", 
+                          "grad_log_pdf", 
+                          "burnin",
+                          "beta", 
+                          "eps",))
+def jax_monge_ula_sampler(x0,
+                          n_samples,
+                          step_size,
+                          alpha_2,
+                          lambd,
+                          eps,
+                          grad_log_pdf,
+                          burnin=None,
+                          key=jax.random.PRNGKey(0),
+                          return_Vs=False,
+                          **kwargs):
+    """
+    Return samples from monge SGLD.  
+    
+    Args:  
+        - x0: initial state.
+        - n_samples: number of samples to generate.
+        - step_size: step size.
+        - alpha_2: alpha^2 in the paper.
+        - lambd: lambda for moving average of gradient.
+        - eps: dummy constant not used
+        - grad_log_pdf: gradient of log pdf.
+        - burnin: number of burnin samples.
+        - key: random key.  
+        
+    Returns:  
+        - samples: generated samples.
+        - None: dummy return.
+    """
+    x = x0
+
+    # use for scan
+    def monge_ula_step(carry, _):
+        x, p, counter, key = carry
+        x, p, counter, key = monge_ula_kernel(x,
+                                              p,
+                                              counter,
+                                              key,
+                                              step_size,
+                                              alpha_2,
+                                              lambd,
+                                              None,
+                                              grad_log_pdf,
+                                              **kwargs)
+        
+        return (x, p, counter, key), x
+
+    carry = (x, jnp.zeros(x.shape), 1, key)
+    
+    _, samples = jax.lax.scan(monge_ula_step, carry, None, length=n_samples)
+    
+    if burnin is not None:
+        return samples[burnin:]
+    
+    return samples, None
+
+
 ############################################################
 samplers_dict = {
     "ula": jax_ula_sampler,
@@ -528,6 +755,7 @@ samplers_dict = {
     "pula": jax_pula_sampler,
     "rmax": jax_rmax_ula_sampler,
     "adahessian": jax_adah_ula_sampler,
+    "monge": jax_monge_ula_sampler,
 }
 
 
@@ -536,7 +764,14 @@ def get_samplers(name, fix=False, hyperparam={}):
     Return a partial function of the sampler with fixed hyperparameters.  
     
     Args:  
-        - name: name of the sampler.
+        - name: name of the sampler, one of the following:
+            - ula
+            - rmsprop
+            - rmsfull
+            - pula
+            - rmax
+            - adahessian
+            - monge  
         - fix: whether to fix the hyperparameters.
         - hyperparam: hyperparameters to fix, dictionary.
     """
