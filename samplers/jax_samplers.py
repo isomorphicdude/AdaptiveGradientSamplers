@@ -187,7 +187,7 @@ def jax_rmsprop_ula_sampler(x0,
     #     return samples
     return samples, Vs
 
-############################## rmsprop ULA ##############################
+############################## rmsfull ULA ##############################
 @partial(jax.jit, static_argnames=("step_size", 
                                    "grad_log_pdf", 
                                    "beta",
@@ -628,6 +628,34 @@ def _get_monge_metrics(dim, grad, alpha_2):
             
     return G_r, G_rsqrt
 
+@partial(jax.jit, static_argnames=("step_size",))
+def _get_step_big(g, 
+                  x,
+                  precond_grad, 
+                  threshold, 
+                  step_size, 
+                  subkey, 
+                  G_rsqrt):
+    
+    factor = jnp.linalg.norm(g) / threshold
+    
+    update_step = g / factor * step_size +\
+        jax.random.normal(subkey, x.shape) / jnp.sqrt(factor) * jnp.sqrt(2 * step_size)
+        
+    return update_step
+
+# @partial(jax.jit, static_argnames=("step_size",))
+def _get_step_normal(g, 
+                     x,
+                     precond_grad,
+                     threshold, 
+                     step_size, 
+                     subkey, 
+                     G_rsqrt):
+    update_step = precond_grad * step_size +\
+        G_rsqrt @ jax.random.normal(subkey, x.shape) * jnp.sqrt(2 * step_size)
+        
+    return update_step
 
 @partial(jax.jit, static_argnames=("step_size", 
                                    "grad_log_pdf", 
@@ -673,8 +701,20 @@ def monge_ula_kernel(x,
     #     update_step = g / factor * step_size +\
     #         jax.random.normal(subkey, x.shape) / jnp.sqrt(factor) * jnp.sqrt(2 * step_size)
     # else:
-    update_step = precond_grad * step_size +\
-        G_rsqrt @ jax.random.normal(subkey, x.shape) * jnp.sqrt(2 * step_size)
+    # update_step = precond_grad * step_size +\
+    #     G_rsqrt @ jax.random.normal(subkey, x.shape) * jnp.sqrt(2 * step_size)
+    
+    x_shape = x.shape
+    update_step = jax.lax.cond(jnp.linalg.norm(precond_grad) > threshold,
+                               _get_step_big,
+                               _get_step_normal,
+                               g,
+                               x,
+                               precond_grad,
+                               threshold,
+                               step_size,
+                               subkey,
+                               G_rsqrt)                             
             
     # update state
     x = x + update_step
@@ -747,6 +787,144 @@ def jax_monge_ula_sampler(x0,
     return samples, None
 
 
+############################### Forgetful RMSProp ###############################
+
+# @partial(jax.jit, static_argnames=("f",))
+def _forget_f(f):
+    return jnp.zeros(f.shape)
+
+# @partial(jax.jit, static_argnames=("f",))
+def _remember_f(f):
+    return f
+
+@partial(jax.jit, static_argnames=("step_size", 
+                                   "grad_log_pdf", 
+                                   "beta",
+                                   "eps",
+                                #    "forget_times",
+                                   ))
+def rms_forgetf_kernel(x, 
+                       f, 
+                       counter, 
+                       key, 
+                       step_size, 
+                       beta, 
+                       eps,
+                       grad_log_pdf, 
+                       forget_times,
+                       **kwargs):
+    """
+    Return the next state of the rmsprop ULA kernel.
+    """
+
+    # split key
+    key, subkey = jax.random.split(key, num=2)
+
+    # gradient of log pdf
+    g = grad_log_pdf(x, **kwargs)
+
+    # update f
+    f = beta * f + (1 - beta) * g**2
+
+    # normalizing term
+    c = jnp.sqrt(f) + eps
+    
+    # step_size = step_size * jnp.linalg.norm(c)
+    
+    # update state
+    x = x + step_size * (g / c) + jnp.sqrt(
+        2 * step_size / c) * jax.random.normal(subkey, x.shape)
+    
+    f = jax.lax.cond(jnp.isin(counter, forget_times),
+                     _forget_f,
+                     _remember_f,
+                     f)
+
+    counter += 1
+    
+    return (x, f, counter, key)
+
+@partial(jax.jit,
+         static_argnames=("n_samples", 
+                          "step_size", 
+                          "grad_log_pdf", 
+                          "burnin",
+                          "beta", 
+                          "eps",
+                        #   "forget_times",
+                          ))
+def jax_rms_forgetf_sampler(x0,
+                            n_samples,
+                            step_size,
+                            beta,
+                            eps,
+                            grad_log_pdf,
+                            burnin=None,
+                            forget_times = None,
+                            key=jax.random.PRNGKey(0),
+                            return_Vs=False,
+                            **kwargs):
+    """
+    Return samples from rmsprop ula.   
+    
+    Args:  
+        - x0: initial state.
+        - n_samples: number of samples to generate.
+        - step_size: step size.
+        - beta: beta for moving average of squared gradient.
+        - eps: control extreme values of the Vs
+        - grad_log_pdf: gradient of log pdf.
+        - burnin: number of burnin samples.
+        - forget_times: the times the V_t is refreshed
+        - key: random key.
+        - return_Vs: whether to return the Vs  
+        
+    Returns:  
+        - samples: generated samples.
+        - Vs: Vs list.
+    """
+    x = x0
+
+    # use for scan
+    def rms_forgetf_step(carry, _):
+        x, f, counter, key = carry
+        x, f, counter, key = rms_forgetf_kernel(x, 
+                                                f, 
+                                                counter, 
+                                                key, 
+                                                step_size, 
+                                                beta,
+                                                eps,
+                                                grad_log_pdf, 
+                                                forget_times,
+                                                **kwargs)
+        # also return f
+        return (x, f, counter, key), (x, f)
+
+    # somehow it was initialised as ones instead of zeros
+    carry = (x, 1.0 * jnp.zeros(x.shape), 1, key)
+    
+    _, out = jax.lax.scan(rms_forgetf_step, carry, None
+                              , length=n_samples)
+
+    samples, Vs = out
+    
+    if burnin is not None:
+        return samples[burnin:]
+
+    # if return_Vs:
+    #     return samples, Vs
+    # else:
+    #     return samples
+    return samples, Vs
+
+
+
+
+
+
+
+
 ############################################################
 samplers_dict = {
     "ula": jax_ula_sampler,
@@ -756,6 +934,8 @@ samplers_dict = {
     "rmax": jax_rmax_ula_sampler,
     "adahessian": jax_adah_ula_sampler,
     "monge": jax_monge_ula_sampler,
+    "forgetful_rmsprop": jax_rms_forgetf_sampler,
+    
 }
 
 
@@ -772,6 +952,9 @@ def get_samplers(name, fix=False, hyperparam={}):
             - rmax
             - adahessian
             - monge  
+            - forgetful_rmsprop
+            - forgetful_rmsprop2
+            - forgetful_rmsfull
         - fix: whether to fix the hyperparameters.
         - hyperparam: hyperparameters to fix, dictionary.
     """
