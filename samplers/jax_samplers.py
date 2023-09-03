@@ -685,7 +685,7 @@ def monge_ula_kernel(x,
     g = grad_log_pdf(x, **kwargs)
 
     # moving average of the gradient
-    # p_grad = lambd * g + (1 - lambd) * p_grad # usually noisy gradient
+    p_grad = lambd * g + (1 - lambd) * p_grad # usually noisy gradient
     p_grad = g
     
     # get preconditioners
@@ -693,16 +693,6 @@ def monge_ula_kernel(x,
     
     # precond grad
     precond_grad = G_r @ g
-    # precond_grad_norm = jnp.linalg.norm(precond_grad)
-    
-    # # Avoid numerical issues
-    # if precond_grad_norm > threshold:
-    #     factor = jnp.linalg.norm(g) / threshold
-    #     update_step = g / factor * step_size +\
-    #         jax.random.normal(subkey, x.shape) / jnp.sqrt(factor) * jnp.sqrt(2 * step_size)
-    # else:
-    # update_step = precond_grad * step_size +\
-    #     G_rsqrt @ jax.random.normal(subkey, x.shape) * jnp.sqrt(2 * step_size)
     
     x_shape = x.shape
     update_step = jax.lax.cond(jnp.linalg.norm(precond_grad) > threshold,
@@ -919,6 +909,201 @@ def jax_rms_forgetf_sampler(x0,
     return samples, Vs
 
 
+####################################### forgetful rmsprop 2 #######################################
+
+#NOTE: this does not refresh the gradients, but stores only the number of gradients according to 
+# the window size, then usual weighting is applied, the stored gradients form a queue
+
+@partial(jax.jit, static_argnames=("step_size", 
+                                   "beta",
+                                   "eps",
+                                   "window_size",
+                                   "seq_exp",
+                                   ))
+def _update_before(x, 
+                   f, 
+                   counter,
+                   g, 
+                   subkey, 
+                   step_size, 
+                   beta, 
+                   eps,
+                   window_size,
+                   past_grads,
+                   seq_exp):
+    # update f
+    f = beta * f + (1 - beta) * g**2
+
+    # normalizing term
+    c = jnp.sqrt(f) + eps
+
+    # update state
+    x = x + step_size * (g / c) + jnp.sqrt(
+        2 * step_size / c) * jax.random.normal(subkey, x.shape)
+
+    # update past_grads
+    past_grads = past_grads.at[counter].set(g)
+
+    return (x, f, past_grads)
+
+@partial(jax.jit, static_argnames=("step_size",
+                                      "beta",
+                                      "eps",
+                                      "window_size",
+                                      "seq_exp",
+                                      ))
+def _update_after(x, 
+                  f, 
+                  counter,
+                  g,
+                  subkey, 
+                  step_size, 
+                  beta, 
+                  eps,
+                  window_size,
+                  past_grads,
+                  seq_exp):
+    
+    # update past_grads
+    _prev_grads = past_grads[1:]
+    past_grads = jnp.concatenate((_prev_grads, g[jnp.newaxis, :]), axis=0)
+    
+    # update f
+    f = 0.0
+
+    f = jnp.sum(
+        (1-beta) * (past_grads**2) * (beta**(seq_exp)), axis=0
+    )
+    # normalizing term
+    c = jnp.sqrt(f) + eps
+
+    # update state
+    x = x + step_size * (g / c) + jnp.sqrt(
+        2 * step_size / c) * jax.random.normal(subkey, x.shape)
+
+    # print(f"After x {x} 🤯,  f {f}, past_grads {past_grads} 🤯 {len(past_grads)}")
+    return (x, f, past_grads)
+    
+    
+
+@partial(jax.jit, static_argnames=("step_size", 
+                                   "grad_log_pdf", 
+                                   "beta",
+                                   "eps",
+                                   "seq_exp",
+                                   ))
+def rms_forgetf_kernel2(x, 
+                       f, 
+                       counter, 
+                       key, 
+                       step_size, 
+                       beta, 
+                       eps,
+                       grad_log_pdf, 
+                       past_grads,
+                       window_size,
+                       seq_exp,
+                       **kwargs):
+    """
+    Return the next state of the rmsprop ULA kernel.
+    """
+
+    # split key
+    key, subkey = jax.random.split(key, num=2)
+
+    # gradient of log pdf
+    g = grad_log_pdf(x, **kwargs)
+
+    x, f, past_grads = jax.lax.cond(counter < window_size + 1,
+                                    _update_before,
+                                    _update_after,
+                                    x,
+                                    f,
+                                    counter,
+                                    g,
+                                    subkey,
+                                    step_size,
+                                    beta,
+                                    eps,
+                                    window_size,
+                                    past_grads,
+                                    seq_exp)
+
+    counter += 1
+    
+    return (x, f, counter, key, past_grads)
+
+@partial(jax.jit,
+         static_argnames=("n_samples", 
+                          "step_size", 
+                          "grad_log_pdf", 
+                          "burnin",
+                          "beta", 
+                          "eps",
+                          "window_size",
+                          ))
+def jax_rms_forgetf_sampler2(x0,
+                            n_samples,
+                            step_size,
+                            beta,
+                            eps,
+                            grad_log_pdf,
+                            burnin=None,
+                            window_size = 50,
+                            key=jax.random.PRNGKey(0),
+                            return_Vs=False,
+                            **kwargs):
+    """
+    Return samples from rmsprop ula.   
+    
+    Args:  
+        - x0: initial state.
+        - n_samples: number of samples to generate.
+        - step_size: step size.
+        - beta: beta for moving average of squared gradient.
+        - eps: control extreme values of the Vs
+        - grad_log_pdf: gradient of log pdf.
+        - burnin: number of burnin samples.
+        - window_size: the number of gradients to store
+        - key: random key.
+        - return_Vs: whether to return the Vs  
+        
+    Returns:  
+        - samples: generated samples.
+        - Vs: Vs list.
+    """
+    x = x0
+    seq_exp = (-window_size + jnp.arange(window_size))[:, jnp.newaxis]
+    
+    def rms_forgetf_step2(carry, _):
+        x, f, counter, key, past_grads = carry
+        x, f, counter, key, past_grads = rms_forgetf_kernel2(x, 
+                                                f, 
+                                                counter, 
+                                                key, 
+                                                step_size, 
+                                                beta,
+                                                eps,
+                                                grad_log_pdf, 
+                                                past_grads,
+                                                window_size,
+                                                seq_exp,
+                                                **kwargs)
+        # also return f
+        return (x, f, counter, key, past_grads), (x, f)
+    
+    # use a [] for queue
+    carry = (x, jnp.zeros(x.shape), 0, key, jnp.zeros((window_size, x.shape[0])))
+    
+    _, out = jax.lax.scan(rms_forgetf_step2, carry, None
+                              , length=n_samples)
+
+    samples, Vs = out
+    
+    if burnin is not None:
+        return samples[burnin:]
+
+    return samples, Vs
 
 
 
@@ -935,7 +1120,7 @@ samplers_dict = {
     "adahessian": jax_adah_ula_sampler,
     "monge": jax_monge_ula_sampler,
     "forgetful_rmsprop": jax_rms_forgetf_sampler,
-    
+    "forgetful_rmsprop2": jax_rms_forgetf_sampler2,
 }
 
 
