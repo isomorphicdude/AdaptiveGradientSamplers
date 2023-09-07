@@ -293,19 +293,98 @@ def jax_rmsfull_ula_sampler(x0,
     if burnin is not None:
         return samples[burnin:]
     
-    # def return_samples(samples, Vs):
-    #     return samples, None
-    # def return_V(samples, Vs):
-    #     return samples, Vs
-    
-    # return jax.lax.cond(return_Vs, 
-    #              return_V, 
-    #              return_samples, 
-    #              samples, Vs)
-    # if return_Vs:
     return samples, Vs
-    # else:
-    #     return samples
+
+
+########################################## Adam ULA ##########################################
+
+@partial(jax.jit,
+         static_argnames=("step_size", 
+                          "grad_log_pdf", 
+                          "beta1", 
+                          "beta2",
+                          "eps"))
+def adam_ula_kernel(x, 
+                    m, 
+                    s, 
+                    iter, 
+                    key, 
+                    step_size, 
+                    beta1, 
+                    beta2, 
+                    eps,
+                    grad_log_pdf,
+                    **kwargs):
+    """
+    Return the next state of the ULA kernel.
+    """
+
+    # split key
+    key, subkey = jax.random.split(key)
+
+    # gradient of log pdf
+    g = grad_log_pdf(x, **kwargs)
+
+    # update m and s
+    m = beta1 * m + (1 - beta1) * g
+    s = beta2 * s + (1 - beta2) * (g**2)
+
+    # bias correction
+    m_hat = m / (1 - beta1**(iter + 1))
+    s_hat = s / (1 - beta2**(iter + 1))
+
+    # normalizing term
+    c = jnp.sqrt(s_hat + eps)
+
+    # update state
+    x = x + step_size * (m_hat / c) + jnp.sqrt(
+        2 * step_size / c) * jax.random.normal(subkey, x.shape)
+
+    iter += 1
+
+    return (x, m, s, iter, key)
+
+
+@partial(jax.jit,
+         static_argnames=("n_samples", 
+                          "step_size", 
+                          "grad_log_pdf", 
+                          "burnin",
+                          "beta1", 
+                          "beta2",
+                          "eps"))
+def jax_adam_ula_sampler(x0,
+                     n_samples,
+                     step_size,
+                     beta1,
+                     beta2,
+                     eps,
+                     grad_log_pdf,
+                     burnin=None,
+                     key=jax.random.PRNGKey(0),
+                     **kwargs):
+    """
+    Return samples from unadjusted Langevin algorithm.  
+    """
+
+    # use for scan
+    def adam_ula_step(carry, _):
+        x, m, s, iter, key = carry
+        x, m, s, iter, key = adam_ula_kernel(x, m, s, iter, key, step_size,
+                                             beta1, beta2, eps, grad_log_pdf,
+                                             **kwargs)
+
+        return (x, m, s, iter, key), (x, (m, s))
+
+    carry = (x0, jnp.zeros(x0.shape), jnp.zeros(x0.shape), 0, key)
+    _, out = jax.lax.scan(adam_ula_step, carry, None, length=n_samples)
+
+    samples, other = out
+    
+    if burnin is not None:
+        return samples[burnin:]
+
+    return samples, other
 
 
 ##### preconditioned ula with fixed preconditioner #####
@@ -384,7 +463,7 @@ def jax_pula_sampler(x0,
     return samples, None
 
 
-############################## adamax without momentum ##############################
+############################## rmax without momentum ##############################
 @partial(jax.jit, static_argnames=("step_size", 
                                    "grad_log_pdf", 
                                    "beta",
@@ -644,7 +723,7 @@ def _get_step_big(g,
         
     return update_step
 
-# @partial(jax.jit, static_argnames=("step_size",))
+@partial(jax.jit, static_argnames=("step_size",))
 def _get_step_normal(g, 
                      x,
                      precond_grad,
@@ -1117,11 +1196,23 @@ samplers_dict = {
     "rmsfull": jax_rmsfull_ula_sampler,
     "pula": jax_pula_sampler,
     "rmax": jax_rmax_ula_sampler,
+    "adam": jax_adam_ula_sampler,
     "adahessian": jax_adah_ula_sampler,
     "monge": jax_monge_ula_sampler,
-    "forgetful_rmsprop": jax_rms_forgetf_sampler,
-    "forgetful_rmsprop2": jax_rms_forgetf_sampler2,
+    "forgetful1": jax_rms_forgetf_sampler,
+    "forgetful2": jax_rms_forgetf_sampler2,
 }
+
+def check_sampler_name(method_list):
+    """
+    Check if the sampler name is valid.  
+    
+    Args:  
+        - method_list: list of samplers to check.
+    """
+    for method in method_list:
+        if method not in samplers_dict.keys():
+            raise ValueError("Sampler {} not found.".format(method))
 
 
 def get_samplers(name, fix=False, hyperparam={}):
@@ -1147,6 +1238,7 @@ def get_samplers(name, fix=False, hyperparam={}):
         return samplers_dict[name]
     else:
         # fix the hyperparameters
+        # print("Fixing hyperparameters for {}.".format(name))
         for key in hyperparam.keys():
             if key not in inspect.getfullargspec(samplers_dict[name]).args:
                 # raise ValueError("Hyperparameter {} not found in {}.".format(key, 
