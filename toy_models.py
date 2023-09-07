@@ -46,6 +46,7 @@ class toy(abc.ABC):
                           xy[1], 
                           self.pdf(vec_x).reshape(int(2*xlim/step),
                                                     int(2*ylim/step)),
+                          cmap="RdBu",
                           **kwargs)
         return out
 
