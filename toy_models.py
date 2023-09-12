@@ -209,7 +209,7 @@ class TwistedGaussian2D(toy):
         yy = np.arange(-ylim, ylim, step)
         Xbb, Ybb = np.meshgrid(xx, yy)
         Zbb = self.pdf(Xbb, Ybb)
-        ax.contourf(Xbb, Ybb, Zbb)
+        ax.contourf(Xbb, Ybb, Zbb, cmap="RdBu")
 
     
     
