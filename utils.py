@@ -48,13 +48,20 @@ def kl_div_every_n(distribution,
         - kl_div: a dictionary of KL divergences for each method and hyperparameter
     """  
     
-    kl_div = {f'{name.split("_")[0]}_{name.split("_")[-1]}': \
-        [] for name in samples.keys()}
-    
-    for name in samples.keys():
-        for i in range(n, len(samples[name])+1, n):
-            kl_div[f'{name.split("_")[0]}_{name.split("_")[-1]}'].\
-                append(distribution.kl_divergence(samples[name][:i]))
+    if isinstance(samples, dict):
+        kl_div = {f'{name.split("_")[0]}_{name.split("_")[-1]}': \
+            [] for name in samples.keys()}
+        
+        for name in samples.keys():
+            for i in range(n, len(samples[name])+1, n):
+                kl_div[f'{name.split("_")[0]}_{name.split("_")[-1]}'].\
+                    append(distribution.kl_divergence(samples[name][:i],
+                                                      use_stored=use_stored))
+    elif isinstance(samples, np.ndarray) or isinstance(samples, jnp.ndarray):
+        kl_div = []
+        for i in range(n, len(samples)+1, n):
+            kl_div.append(distribution.kl_divergence(samples[:i],
+                                                     use_stored=use_stored))
     return kl_div
 
 
@@ -177,7 +184,7 @@ def plot_2D_samples_single(ax,
     """  
     distribution.plot(ax=ax, xlim=xlim, ylim=ylim, **kwargs)
     ax.scatter(samples[:first_n, 0], samples[:first_n, 1], s=3,
-                    alpha=0.1, color='yellow')
+                    alpha=0.4, color='yellow')
     ax.set_xlim(-xlim, xlim)
     ax.set_ylim(-ylim, ylim)
     
