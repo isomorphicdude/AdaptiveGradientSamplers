@@ -49,7 +49,7 @@ def get_best_hyperparams(
     samples_list =  []
     
     if init_states is None:
-        init_states = np.random.normal(loc=0, scale=10, size=(num_runs, 2))
+        init_states = np.random.normal(loc=0, scale=2, size=(num_runs, 2))
     
     for i in range(num_runs):
         init_state = init_states[i, :]
