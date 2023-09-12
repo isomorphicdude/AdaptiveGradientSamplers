@@ -112,8 +112,8 @@ def generate_2D(distribution,
                                         name=name)
                 if use_string_keys:
                     # name in method
-                    ret[f"{name}_{hyperparams.get(name).values()}_{init_state}_{i}"] = samples                
-                    name_list.append(f"{name}_{hyperparams.get(name).values()}_{init_state}_{i}")
+                    ret[f"{name}_{hyperparams.get(name).values()}_{fixed_init_state}_{i}"] = samples                
+                    name_list.append(f"{name}_{hyperparams.get(name).values()}_{fixed_init_state}_{i}")
             
     # storing to h5py file
     if store:
