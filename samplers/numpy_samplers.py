@@ -239,3 +239,75 @@ def preconditioned_ula(x0,
 #         out['gamma'] = np.asanyarray(Gamma_list)
     
 #     return out
+
+
+##### from original paper #####
+# https://github.com/ksnxr/SSGRLDNDM/blob/master/sgmcmc/mcmc/monge_sgld.py
+def get_metrics(dim, grad, alpha_2):
+    grad_norm_2 = np.sum(grad**2)
+    G_r = np.eye(dim) - alpha_2 / (1 + alpha_2 * grad_norm_2) * grad @ grad.T
+    G_rsqrt = (
+        np.eye(dim)
+        + (1 / np.sqrt(1 + alpha_2 * grad_norm_2) - 1) / grad_norm_2 * grad @ grad.T
+    )
+    return G_r, G_rsqrt
+
+def monge_ula(x0, 
+            n_samples,
+            step_size,
+            alpha_2,
+            lambd,
+            grad_log_pdf,
+            burnin=None,
+            key=jax.random.PRNGKey(0),
+            return_Vs=False,
+            use_ema=False,
+            threshold=1e3,
+            **kwargs):
+    """
+    Implements the Monge ULA algorithm.  
+    """
+    x = x0
+    eta = step_size
+    samples = np.zeros((n_samples+1, 2))
+    samples[0] = x0
+    
+    dim = x0.shape[0]
+    p_grad = np.zeros((dim, 1))
+    sigma = np.sqrt(2 * eta)
+    
+    warn_count = 0
+    
+    for i in range(n_samples):
+        g = grad_log_pdf(x)
+        
+        if use_ema:
+            p_grad = lambd * p_grad + (1 - lambd) * g
+        else:
+            p_grad = g
+
+        G_r, G_rsqrt = get_metrics(dim, p_grad, alpha_2)
+        precond_grad = G_r @ g
+        precond_grad_norm = np.linalg.norm(precond_grad)
+        
+         # Avoid numerical issues
+        if precond_grad_norm > threshold:
+            # print("WARNING: precond_grad_norm > threshold")
+            warn_count += 1
+            factor = np.linalg.norm(g) / threshold
+            dx = (
+                g / factor * eta
+                + np.random.normal(size=(dim,)) / np.sqrt(factor) * sigma
+            )
+        else:
+            dx = precond_grad * eta + G_rsqrt @ np.random.normal(size=(dim,)) * sigma
+        # dx = np.squeeze(dx, 0)
+        
+        x = x + dx
+        
+        samples[i+1] = x
+        
+    if burnin is not None:
+        samples = samples[burnin:]  
+    
+    return samples, warn_count
