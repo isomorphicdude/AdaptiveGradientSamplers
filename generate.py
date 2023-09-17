@@ -58,7 +58,7 @@ def generate_2D(distribution,
         - num_samples: number of samples to take per chain
         - methods: list of methods to run
         - hyperparams: dictionary of hyperparameters for each method (dict of dicts)
-        - seed: random seed for jax.random  
+        - seed: random seed for jax.random 
         - store: whether to store the samples in a file in h5py format
         - output: name of the output file, if store=True
         - use_string_keys: whether to use strings of hyperparams as keys

@@ -16,7 +16,8 @@ def get_best_hyperparams(
     metric='wass2d',
     use_num_cores=2,
     num_runs = 30,
-    init_states = None
+    init_states = None,
+    print_best_metric = False
 ):
     """
     Gets the best hyperparameters from a list of hyperparameters.  
@@ -33,7 +34,7 @@ def get_best_hyperparams(
         - num_runs: use the metric averaged over num_runs runs to determine the best hyperparameters
         - init_states: either None or a numpy array of shape (num_runs, 2), if None then the init_state 
             is randomly generated from N(0, 100)
-        
+        - print_best_metric: whether to print the best metric  
         
     Returns:  
         - best_hyperparams: the best hyperparameters
@@ -86,6 +87,9 @@ def get_best_hyperparams(
         if return_best_samps:
             out.append(samples[min(kl_div_grid_search, key=kl_div_grid_search.get)])
             
+        if print_best_metric:
+            print('Best KL Divergence: ', kl_div_grid_search[min(kl_div_grid_search, key=kl_div_grid_search.get)])
+            
     elif metric=='wass2d':
         w2d_grid_search = {name: None for name in samples.keys()}
         for key in samples.keys():
@@ -104,6 +108,9 @@ def get_best_hyperparams(
         if return_best_samps:
             out.append(samples[min(w2d_grid_search, 
                                    key=w2d_grid_search.get)])
+            
+        if print_best_metric:
+            print('Best Wasserstein Distance: ', w2d_grid_search[min(w2d_grid_search, key=w2d_grid_search.get)])
     
     return out
 
@@ -117,7 +124,8 @@ def get_best_hyperparams_list(methods_list,
                               metric='wass2d',
                               use_num_cores=2,
                               num_runs = 30,
-                              init_states = None):
+                              init_states = None,
+                              print_best_metric = False):
     """
     Produces a dictionary of dictionaries as hyperparameters
     
@@ -132,6 +140,7 @@ def get_best_hyperparams_list(methods_list,
         - use_num_cores: the number of cores to use  
         - num_runs: use the metric averaged over num_runs runs to determine the best hyperparameters
         - init_states: either None or a numpy array of shape (num_runs, 2), if None then the init_state
+        - print_best_metric: whether to print the best metric
         
     Returns:  
         - out: a dictionary of tuples (best hyperparameters, best samples if return_best_samps is True)
@@ -150,5 +159,6 @@ def get_best_hyperparams_list(methods_list,
                                            metric=metric,
                                            use_num_cores=use_num_cores,
                                            num_runs=num_runs,
-                                           init_states=init_states)
+                                           init_states=init_states,
+                                           print_best_metric=print_best_metric)
     return out
