@@ -5,8 +5,8 @@
 samplers/__pycache__/__init__.cpython-39.pyc
 *.h5py
 samplers/__pycache__/jax_samplers.cpython-39.pyc
-.ipynb
+*.ipynb
 brownian.py
-/figures
+/images
 .DS_Store
 /hyperparams
