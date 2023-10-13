@@ -2,10 +2,14 @@
 import jax
 import jax.numpy as jnp
 import numpy as np
+
+import argparse
 import ast
 import h5py
 import pickle
 from itertools import product
+
+
 import matplotlib.pyplot as plt
 plt.rcParams['text.usetex'] = True
 
@@ -28,6 +32,18 @@ def get_samples_dict(filename):
         for key in f.keys():
             ret[_get_name(key)] = f[key][...]
     return ret
+
+
+def dict2namespace(config):
+    """Convert dictionary to namespace."""
+    namespace = argparse.Namespace()
+    for key, value in config.items():
+        if isinstance(value, dict):
+            new_value = dict2namespace(value)
+        else:
+            new_value = value
+        setattr(namespace, key, new_value)
+    return namespace
 
 
 
