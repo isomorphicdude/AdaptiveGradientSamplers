@@ -2,6 +2,7 @@ import abc
 import jax
 import jax.numpy as jnp
 import numpy as np
+import scipy as sp
 import pints.toy
 from functools import partial
 from diagnostics import *
@@ -64,7 +65,7 @@ class Gaussian2D(toy):
         
     def ground_truth_samples(self, n_samples):
         """Generate samples from the ground truth normal distribution."""
-        return jax.scipy.stats.\
+        return sp.stats.\
             multivariate_normal.rvs(mean=self.mu, cov=self.sigma, size=n_samples)
     
     def pdf(self, x):
