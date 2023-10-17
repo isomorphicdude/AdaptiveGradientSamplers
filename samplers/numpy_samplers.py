@@ -245,10 +245,12 @@ def preconditioned_ula(x0,
 # https://github.com/ksnxr/SSGRLDNDM/blob/master/sgmcmc/mcmc/monge_sgld.py
 def get_metrics(dim, grad, alpha_2):
     grad_norm_2 = np.sum(grad**2)
-    G_r = np.eye(dim) - alpha_2 / (1 + alpha_2 * grad_norm_2) * grad @ grad.T
+    print(grad)
+    G_r = np.eye(dim) - alpha_2 / (1 + alpha_2 * grad_norm_2) * np.dot(grad, grad.T)
+
     G_rsqrt = (
         np.eye(dim)
-        + (1 / np.sqrt(1 + alpha_2 * grad_norm_2) - 1) / grad_norm_2 * grad @ grad.T
+        + (1 / np.sqrt(1 + alpha_2 * grad_norm_2) - 1) / grad_norm_2 * np.dot(grad, grad.T)
     )
     return G_r, G_rsqrt
 
